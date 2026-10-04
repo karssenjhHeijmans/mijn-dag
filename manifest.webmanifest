@@ -1,0 +1,9 @@
+{
+  "name": "Mijn Dag",
+  "short_name": "Mijn Dag",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f7f8fb",
+  "theme_color": "#ffffff",
+  "lang": "nl"
+}

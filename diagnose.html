@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mijn Dag – technische diagnose</title>
+<style>
+body{font-family:system-ui,-apple-system,Segoe UI,sans-serif;background:#f6f7fb;color:#172033;margin:0;padding:18px}
+main{max-width:760px;margin:auto;background:#fff;border:1px solid #dde2ea;border-radius:20px;padding:20px}
+h1{margin:0 0 6px}.muted{color:#687386}.box{margin:12px 0;padding:14px;border-radius:13px;border:1px solid #dde2ea;white-space:pre-wrap;word-break:break-word}
+.ok{background:#eefbf2;border-color:#b9e5c4}.bad{background:#fff0f0;border-color:#f0b8b8}.wait{background:#f5f6f8}
+button{width:100%;border:0;border-radius:12px;background:#5568ff;color:#fff;font-size:16px;font-weight:700;padding:13px;cursor:pointer}
+code{font-family:ui-monospace,monospace}
+</style>
+</head>
+<body>
+<main>
+<h1>🔧 Mijn Dag – technische diagnose</h1>
+<p class="muted">Deze test verandert niets aan je account. Hij controleert alleen de verbinding.</p>
+<div id="browser" class="box wait">⏳ Browser controleren…</div>
+<div id="authapi" class="box wait">⏳ Supabase Auth controleren…</div>
+<div id="dataapi" class="box wait">⏳ Supabase Data API controleren…</div>
+<div id="client" class="box wait">⏳ Supabase-client controleren…</div>
+<div id="cors" class="box wait">⏳ Login-endpoint testen…</div>
+<button onclick="run()">Opnieuw testen</button>
+<p id="summary" class="muted"></p>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const BASE="https://sucdkavowfwfxijlade.supabase.co";
+const KEY="sb_publishable_i9aFZ2edlg08KUTzw_gEoQ_roOIViHO";
+
+function put(id,cls,msg){const e=document.getElementById(id);e.className="box "+cls;e.textContent=msg}
+async function req(url,opts={}){
+ const r=await fetch(url,{...opts,cache:"no-store"});
+ const text=await r.text();
+ return {status:r.status,ok:r.ok,text:text.slice(0,800),headers:[...r.headers.entries()].filter(x=>["content-type","x-client-info","access-control-allow-origin"].includes(x[0]))};
+}
+async function run(){
+ put("browser","ok","🟢 Browser: JavaScript werkt.");
+ put("authapi","wait","⏳ Testen…");put("dataapi","wait","⏳ Testen…");put("client","wait","⏳ Testen…");put("cors","wait","⏳ Testen…");
+ document.getElementById("summary").textContent="";
+ try{
+   const r=await req(BASE+"/auth/v1/settings",{headers:{apikey:KEY}});
+   put("authapi",r.ok?"ok":"bad",(r.ok?"🟢":"🔴")+" Auth API HTTP "+r.status+"\n"+r.text);
+ }catch(e){put("authapi","bad","🔴 Auth API fetch-fout\n"+e.name+": "+e.message)}
+ try{
+   const r=await req(BASE+"/rest/v1/day_plans?select=id&limit=1",{headers:{apikey:KEY,Authorization:"Bearer "+KEY}});
+   put("dataapi",r.ok?"ok":"bad",(r.ok?"🟢":"🔴")+" Data API HTTP "+r.status+"\n"+r.text);
+ }catch(e){put("dataapi","bad","🔴 Data API fetch-fout\n"+e.name+": "+e.message)}
+ try{
+   if(!window.supabase) throw new Error("Supabase JS-library ontbreekt");
+   const c=window.supabase.createClient(BASE,KEY);
+   const r=await c.auth.getSession();
+   if(r.error) put("client","bad","🔴 Supabase-client geeft fout\n"+r.error.message);
+   else put("client","ok","🟢 Supabase-client werkt.\nSessie aanwezig: "+(!!r.data.session));
+ }catch(e){put("client","bad","🔴 Supabase-client fout\n"+e.name+": "+e.message)}
+ try{
+   const r=await req(BASE+"/auth/v1/token?grant_type=password",{
+     method:"POST",headers:{"Content-Type":"application/json",apikey:KEY},
+     body:JSON.stringify({email:"diagnose@example.invalid",password:"diagnose-only"})
+   });
+   put("cors",r.status===400||r.status===401?"ok":(r.ok?"ok":"bad"),
+     (r.status===400||r.status===401?"🟢":"🔴")+" Login-endpoint HTTP "+r.status+"\n"+r.text);
+ }catch(e){put("cors","bad","🔴 Login-endpoint fetch-fout\n"+e.name+": "+e.message)}
+ document.getElementById("summary").textContent="Stuur mij een screenshot van dit hele scherm. Deel geen wachtwoord.";
+}
+run();
+</script>
+</body>
+</html>

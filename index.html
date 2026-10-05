@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
+<link rel="manifest" href="manifest.webmanifest">
+<title>Mijn Dag</title>
+<style>
+:root{font-family:system-ui,-apple-system,Segoe UI,sans-serif;color:#172033;background:#f7f8fb}
+*{box-sizing:border-box}body{margin:0}.app{max-width:720px;margin:auto;padding:16px}
+header{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:16px}
+h1{font-size:28px;margin:0}.muted{color:#687386;font-size:14px}
+.panel,.tile{background:white;border:1px solid #e0e4eb;border-radius:20px}.panel{padding:16px}
+.tile{padding:14px;display:flex;align-items:center;gap:14px;cursor:pointer}
+.tile.active{border:2px solid #5568ff;background:#f0f2ff}.tile.done{opacity:.45}
+.picto{width:60px;height:60px;border-radius:16px;background:#f1f3f7;display:grid;place-items:center;font-size:32px;flex:none}
+.btn{border:1px solid #d8dde6;background:white;border-radius:12px;padding:11px 14px;font-size:15px;font-weight:700;cursor:pointer}
+.primary{background:#5568ff;color:white;border-color:#5568ff}.full{width:100%}
+.details{display:none;padding:15px;background:#f4f6fa;border:1px solid #e0e4eb;border-top:0;border-radius:0 0 18px 18px}.details.open{display:block}
+.grid{display:grid;gap:10px}.tabs{display:flex;gap:8px}
+input,textarea{width:100%;padding:11px;border:1px solid #d8dde6;border-radius:11px;font:inherit;background:white}
+textarea{min-height:80px}.editor{display:none;padding:14px;border-top:1px solid #e0e4eb}.editor.open{display:block}
+.error{background:#fff0f0;border:1px solid #f0b8b8;color:#9b1c1c;border-radius:12px;padding:12px;line-height:1.4}
+.success{background:#eefbf2;border:1px solid #b9e5c4;color:#176b2b;border-radius:12px;padding:12px}
+@media(max-width:420px){h1{font-size:24px}.app{padding:12px}.picto{width:54px;height:54px;font-size:29px}}
+</style>
+</head>
+<body>
+<div class="app">
+<header>
+<div><div class="muted">🌈 Vandaag</div><h1>Mijn Dag</h1></div>
+<div class="tabs"><button class="btn primary" id="childBtn">🧒</button><button class="btn" id="parentBtn">👩</button></div>
+</header>
+<main id="main"></main>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const CONFIG={url:"https://sucdkavowfwfxiijlade.supabase.co",key:"sb_publishable_i9aFZ2edlg08KUTzw_gEoQ_roOIViHO"};
+let activities=[
+["07:00","🌞","Opstaan","Aankleden\nHaar doen\nMyla uitlaten\nBrood maken\nMedicijnen nemen\nBrood opeten"],
+["08:30","👩","Kim komt","Even gezellig bijkletsen."],
+["08:45","🧁","Bakken","Samen iets lekkers bakken.\nBakspullen pakken.\nTijdens het wachten opruimen.\nDaarna een boek lezen."],
+["10:00","🍎","Tussendoortje","Een broodje\nFruit of komkommer\nWater of thee\nEén keer limonade mag ook"],
+["10:30","🐕","Honden uitlaten","Myla en Yala lekker even naar buiten."],
+["11:00","🥪","Brood maken","Een broodje of tosti maken.\nWater of thee drinken."],
+["12:00","🍽️","Lunch","Lunch eten.\nDaarna alles opruimen."],
+["12:30","🧸","Kamer opruimen","Kamer netjes maken.\nDaarna een boek lezen."],
+["13:00","🏃","Hardlopen","Samen hardlopen.\nBij regen kunnen activiteiten worden omgewisseld."],
+["14:00","📺","TV kijken","30 minuten tv kijken."],
+["14:30","👩","Marieke komt","15 minuten gezellig kletsen."],
+["14:45","📚","Werkboekje","Met het werkboekje bezig."],
+["15:15","📖","Boek lezen","15 minuten rustig lezen."],
+["15:30","🐕","Honden uitlaten","Een groot rondje lopen, ongeveer 30 minuten."],
+["16:00","🎲","Uno spelen","15 minuten Uno spelen."],
+["16:15","📺","TV kijken","30 minuten tv kijken boven."],
+["16:45","🧹","Klusjes","Tijd voor klusjes.\nGeen klusje? Dan de kledingkast opruimen."],
+["17:10","💭","Dag afsluiten","Kort samen bespreken hoe de dag was.\nDaarna de tafel dekken."],
+["17:30","🍽️","Eten","Samen aan tafel eten."],
+["18:10","🌙","Bedtijd","Myla uitlaten\nMedicijnen nemen\nNaar de wc\nPyjama aantrekken\nTanden poetsen\nNaar bed"]
+];
+
+let done=new Set(),open=-1,mode="child",client=null,session=null;
+const main=document.getElementById("main");
+
+function mins(s){let [h,m]=s.split(":").map(Number);return h*60+m}
+function activeIndex(){
+ const n=new Date().getHours()*60+new Date().getMinutes();
+ for(let i=0;i<activities.length;i++){
+   if(!done.has(i)&&mins(activities[i][0])<=n)return i;
+ }
+ return -1;
+}
+function saveLocal(){localStorage.setItem("mijnDagActivities",JSON.stringify(activities))}
+function loadLocal(){try{let x=JSON.parse(localStorage.getItem("mijnDagActivities"));if(Array.isArray(x)&&x.length)activities=x}catch{}}
+
+function loginErrorMessage(e){
+ const m=(e?.message||"").toLowerCase();
+ if(m.includes("invalid login credentials")) return "❌ E-mailadres of wachtwoord klopt niet.";
+ if(m.includes("email not confirmed")) return "📧 Dit e-mailadres is nog niet bevestigd in Supabase. Bevestig het account bij Authentication → Users.";
+ if(m.includes("too many requests")) return "⏳ Er zijn te veel inlogpogingen. Wacht even en probeer opnieuw.";
+ if(m.includes("failed to fetch")||m.includes("network")) return "🌐 Verbinding met Supabase mislukt.";
+ if(m.includes("apikey")||m.includes("api key")) return "🔑 De Supabase-sleutel in de app klopt niet.";
+ return "❌ Inloggen mislukt: "+(e?.message||"onbekende fout");
+}
+
+async function refreshSession(){
+ if(!client)return;
+ const {data}=await client.auth.getSession();
+ session=data.session;
+}
+async function loginParent(email,password){
+ const {data,error}=await client.auth.signInWithPassword({email,password});
+ if(error)throw error;
+ session=data.session;
+}
+async function syncLoad(){
+ if(!client)return;
+ try{
+  const {data,error}=await client.from("day_plans").select("plan,updated_at").order("updated_at",{ascending:false}).limit(1).maybeSingle();
+  if(error)throw error;
+  if(data?.plan){activities=data.plan;saveLocal()}
+ }catch(e){console.warn("syncLoad",e)}
+}
+async function syncSave(){
+ saveLocal();
+ if(!client||!session?.user)return false;
+ try{
+  const {data:existing,error:e1}=await client.from("day_plans").select("id").eq("owner_id",session.user.id).maybeSingle();
+  if(e1)throw e1;
+  const payload={plan:activities,updated_at:new Date().toISOString()};
+  if(existing){
+   const {error}=await client.from("day_plans").update(payload).eq("id",existing.id);
+   if(error)throw error;
+  }else{
+   const {error}=await client.from("day_plans").insert({owner_id:session.user.id,...payload});
+   if(error)throw error;
+  }
+  return true;
+ }catch(e){console.warn("syncSave",e);return false}
+}
+async function logoutParent(){await client.auth.signOut();session=null;mode="child";open=-1;render()}
+
+function childView(){
+ const a=activeIndex();
+ let html=`<div class="panel" style="margin-bottom:14px"><div class="muted">🟢 NU</div>
+ <div style="font-size:24px;font-weight:800;margin-top:4px">${a>=0?activities[a][1]+" "+activities[a][2]:"🎉 De dag is klaar!"}</div>
+ <div class="muted" style="margin-top:5px">${a>=0?"Deze activiteit blijft staan totdat je op Klaar drukt.":"Alles is afgerond."}</div></div><div class="grid">`;
+ activities.forEach((x,i)=>{
+  const isDone=done.has(i),active=i===a;
+  html+=`<div><div class="tile ${active?"active ":""}${isDone?"done":""}" data-open="${i}">
+  <div class="picto">${x[1]}</div><div style="flex:1;min-width:0"><div class="muted">${x[0]}</div><div style="font-size:18px;font-weight:750">${x[2]}</div><div class="muted">${isDone?"Klaar ✓":active?"NU":"Daarna"}</div></div><div style="font-size:24px">›</div></div>
+  <div class="details ${open===i?"open":""}"><div style="font-size:20px;font-weight:800">${x[1]} ${x[2]}</div>
+  <div style="white-space:pre-line;margin-top:10px">${x[3]}</div>
+  ${isDone?'<div style="font-weight:700;margin-top:14px">✅ Klaar</div>':`<button class="btn primary full" style="margin-top:14px" data-done="${i}">✅ Klaar</button>`}</div></div>`;
+ });
+ html+=`</div><button class="btn full" style="margin-top:14px" id="resetDay">↻ Dag opnieuw beginnen</button>`;
+ main.innerHTML=html;
+ main.querySelectorAll("[data-open]").forEach(el=>el.onclick=()=>{open=open===+el.dataset.open?-1:+el.dataset.open;render()});
+ main.querySelectorAll("[data-done]").forEach(el=>el.onclick=e=>{e.stopPropagation();done.add(+el.dataset.done);open=-1;render()});
+ main.querySelector("#resetDay").onclick=()=>{done=new Set();open=-1;render()};
+}
+
+function parentView(){
+ if(!session?.user){
+  main.innerHTML=`<div class="panel"><div style="font-size:24px;font-weight:800">🔐 Ouderomgeving</div>
+  <div class="muted" style="margin:7px 0 16px">Log in om de dagplanning te wijzigen.</div>
+  <div class="grid">
+  <label class="muted">E-mailadres<input id="loginEmail" type="email" autocomplete="username" placeholder="jouw e-mailadres"></label>
+  <label class="muted">Wachtwoord<input id="loginPassword" type="password" autocomplete="current-password" placeholder="wachtwoord"></label>
+  <button class="btn" id="showPassword" type="button">👁️ Wachtwoord tonen</button>
+  <button class="btn primary" id="login">Inloggen</button>
+  <div id="loginMsg"></div></div></div>`;
+  main.querySelector("#showPassword").onclick=()=>{
+   const p=main.querySelector("#loginPassword"),b=main.querySelector("#showPassword");
+   p.type=p.type==="password"?"text":"password";
+   b.textContent=p.type==="password"?"👁️ Wachtwoord tonen":"🙈 Wachtwoord verbergen";
+  };
+  main.querySelector("#login").onclick=async()=>{
+   const email=main.querySelector("#loginEmail").value.trim();
+   const password=main.querySelector("#loginPassword").value;
+   const msg=main.querySelector("#loginMsg");
+   msg.className="muted";msg.textContent="Bezig met inloggen…";
+   try{await loginParent(email,password);await syncLoad();render()}
+   catch(e){msg.className="error";msg.textContent=loginErrorMessage(e);console.warn(e)}
+  };
+  return;
+ }
+ let html=`<div class="panel" style="margin-bottom:14px"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+ <div><b>👩 Ouderomgeving</b><div class="muted" style="margin-top:5px">Ingelogd als ${session.user.email||"ouder"}</div></div>
+ <button class="btn" id="logout">Uitloggen</button></div>
+ <div style="display:flex;gap:8px;margin-top:14px"><button class="btn primary" id="saveOnline">☁️ Online opslaan</button><span id="saveMsg" class="muted" style="align-self:center"></span></div></div><div class="grid">`;
+ activities.forEach((x,i)=>html+=`<div class="panel"><div style="display:flex;align-items:center;gap:12px"><div class="picto">${x[1]}</div><div style="flex:1"><div class="muted">${x[0]}</div><b>${x[2]}</b></div><button class="btn" data-edit="${i}">Bewerken</button></div>
+ <div class="editor ${open===i?"open":""}" data-editor="${i}"><div class="grid">
+ <label class="muted">Tijd<input class="et" value="${x[0]}"></label><label class="muted">Pictogram<input class="ep" value="${x[1]}" maxlength="2"></label>
+ <label class="muted">Korte tekst<input class="en" value="${x[2]}"></label><label class="muted">Extra informatie<textarea class="ei">${x[3]}</textarea></label>
+ <button class="btn primary save" data-save="${i}">Opslaan</button></div></div></div>`);
+ html+=`</div><div class="panel" style="margin-top:12px"><b>➕ Activiteit toevoegen</b><div class="grid" style="margin-top:10px">
+ <input id="nt" placeholder="Tijd, bijvoorbeeld 19:00"><input id="np" placeholder="Pictogram, bijvoorbeeld ⭐"><input id="nn" placeholder="Naam"><textarea id="ni" placeholder="Extra informatie"></textarea>
+ <button class="btn primary" id="add">Toevoegen</button></div></div>`;
+ main.innerHTML=html;
+ main.querySelector("#logout").onclick=logoutParent;
+ main.querySelector("#saveOnline").onclick=async()=>{const msg=main.querySelector("#saveMsg");msg.textContent="Opslaan…";msg.textContent=await syncSave()?"Opgeslagen ✓":"Opslaan mislukt";};
+ main.querySelectorAll("[data-edit]").forEach(b=>b.onclick=()=>{open=open===+b.dataset.edit?-1:+b.dataset.edit;render()});
+ main.querySelectorAll("[data-save]").forEach(b=>b.onclick=async()=>{
+  const i=+b.dataset.save,e=main.querySelector(`[data-editor="${i}"]`);
+  activities[i]=[e.querySelector(".et").value||activities[i][0],e.querySelector(".ep").value||activities[i][1],e.querySelector(".en").value||activities[i][2],e.querySelector(".ei").value];
+  activities.sort((a,b)=>mins(a[0])-mins(b[0]));open=-1;await syncSave();render();
+ });
+ main.querySelector("#add").onclick=async()=>{
+  const t=main.querySelector("#nt").value.trim(),p=main.querySelector("#np").value.trim()||"⭐",n=main.querySelector("#nn").value.trim(),inf=main.querySelector("#ni").value.trim();
+  if(!t||!n)return;
+  activities.push([t,p,n,inf]);activities.sort((a,b)=>mins(a[0])-mins(b[0]));await syncSave();render();
+ };
+}
+
+function render(){
+ document.getElementById("childBtn").className="btn"+(mode==="child"?" primary":"");
+ document.getElementById("parentBtn").className="btn"+(mode==="parent"?" primary":"");
+ mode==="child"?childView():parentView();
+}
+document.getElementById("childBtn").onclick=()=>{mode="child";open=-1;render()};
+document.getElementById("parentBtn").onclick=()=>{mode="parent";open=-1;render()};
+loadLocal();
+
+if(CONFIG.url&&CONFIG.key&&window.supabase){
+ client=supabase.createClient(CONFIG.url,CONFIG.key);
+ refreshSession().then(()=>syncLoad()).then(()=>render());
+ client.auth.onAuthStateChange((_event,s)=>{session=s;render()});
+}else render();
+
+setInterval(()=>{if(mode==="child")syncLoad().then(render)},60000);
+if("serviceWorker"in navigator)navigator.serviceWorker.register("sw.js").catch(()=>{});
+</script>
+</body>
+</html>
